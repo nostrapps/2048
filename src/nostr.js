@@ -97,38 +97,66 @@ async function sha256(data) {
   return new Uint8Array(hash)
 }
 
-// Get public key from private key
+// BIP-340 tagged hash
+async function taggedHash(tag, ...data) {
+  const tagBytes = new TextEncoder().encode(tag)
+  const tagHash = await sha256(tagBytes)
+  const combined = new Uint8Array([...tagHash, ...tagHash, ...data.flat()])
+  return sha256(combined)
+}
+
+// Get public key from private key (BIP-340 x-only)
 function getPublicKey(privKeyHex) {
   const privKey = BigInt('0x' + privKeyHex)
   const point = pointMultiply(privKey)
-  return bytesToHex(bigintToBytes(point[0]))
+  // BIP-340 uses x-only pubkeys (32 bytes)
+  return bytesToHex(bigintToBytes(point[0], 32))
 }
 
 // Create schnorr signature (BIP-340)
 async function schnorrSign(messageHash, privKeyHex) {
-  const d = BigInt('0x' + privKeyHex)
-  const P = pointMultiply(d)
-  const px = P[0]
+  // Step 1: Get private key as bigint
+  const d0 = BigInt('0x' + privKeyHex)
 
-  // Negate d if P.y is odd
-  const dNeg = P[1] % 2n === 0n ? d : CURVE.N - d
+  // Step 2: Compute public key point P = d0 * G
+  const P = pointMultiply(d0)
+  const px = bigintToBytes(P[0], 32)
 
-  // Generate k deterministically
-  const aux = crypto.getRandomValues(new Uint8Array(32))
-  const t = bigintToBytes(dNeg ^ bytesToBigint(aux))
-  const kHash = await sha256(new Uint8Array([...t, ...bigintToBytes(px), ...messageHash]))
-  let k = mod(bytesToBigint(kHash), CURVE.N)
-  if (k === 0n) throw new Error('Invalid k')
+  // Step 3: Negate d if P.y is odd (BIP-340 requires even y)
+  const d = P[1] % 2n === 0n ? d0 : CURVE.N - d0
 
-  const R = pointMultiply(k)
-  if (R[1] % 2n !== 0n) k = CURVE.N - k
+  // Step 4: Generate random auxiliary data
+  const a = crypto.getRandomValues(new Uint8Array(32))
 
-  const rx = bigintToBytes(R[0])
-  const eHash = await sha256(new Uint8Array([...rx, ...bigintToBytes(px), ...messageHash]))
-  const e = mod(bytesToBigint(eHash), CURVE.N)
-  const s = mod(k + e * dNeg, CURVE.N)
+  // Step 5: Compute t = d XOR tagged_hash("BIP0340/aux", a)
+  const auxHash = await taggedHash('BIP0340/aux', a)
+  const dBytes = bigintToBytes(d, 32)
+  const t = new Uint8Array(32)
+  for (let i = 0; i < 32; i++) {
+    t[i] = dBytes[i] ^ auxHash[i]
+  }
 
-  return bytesToHex(new Uint8Array([...rx, ...bigintToBytes(s)]))
+  // Step 6: Compute k0 = tagged_hash("BIP0340/nonce", t || px || m) mod n
+  const nonceHash = await taggedHash('BIP0340/nonce', t, px, messageHash)
+  let k0 = mod(bytesToBigint(nonceHash), CURVE.N)
+  if (k0 === 0n) throw new Error('Invalid k')
+
+  // Step 7: Compute R = k0 * G
+  const R = pointMultiply(k0)
+  const rx = bigintToBytes(R[0], 32)
+
+  // Step 8: Negate k if R.y is odd
+  const k = R[1] % 2n === 0n ? k0 : CURVE.N - k0
+
+  // Step 9: Compute e = tagged_hash("BIP0340/challenge", rx || px || m) mod n
+  const challengeHash = await taggedHash('BIP0340/challenge', rx, px, messageHash)
+  const e = mod(bytesToBigint(challengeHash), CURVE.N)
+
+  // Step 10: Compute s = (k + e * d) mod n
+  const s = mod(k + e * d, CURVE.N)
+
+  // Return signature as rx || s (64 bytes)
+  return bytesToHex(new Uint8Array([...rx, ...bigintToBytes(s, 32)]))
 }
 
 // Create event ID (SHA-256 of serialized event)
