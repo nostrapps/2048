@@ -1,0 +1,25 @@
+{
+  "name": "nostr-2048",
+  "version": "1.0.0",
+  "description": "2048 tile game with Nostr integration for decentralized high scores",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.0.3"
+  },
+  "keywords": [
+    "nostr",
+    "2048",
+    "game",
+    "decentralized"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nostrapps/2048"
+  }
+}
