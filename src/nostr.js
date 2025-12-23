@@ -175,9 +175,18 @@ async function getEventId(event) {
 
 // Sign event with private key
 async function signEventWithPrivkey(event, privKeyHex) {
-  event.pubkey = getPublicKey(privKeyHex)
+  const pubkey = getPublicKey(privKeyHex)
+  console.log('Derived pubkey:', pubkey)
+  console.log('Pubkey length:', pubkey.length)
+
+  event.pubkey = pubkey
   event.id = await getEventId(event)
+  console.log('Event ID:', event.id)
+
   event.sig = await schnorrSign(hexToBytes(event.id), privKeyHex)
+  console.log('Signature:', event.sig)
+  console.log('Sig length:', event.sig.length)
+
   return event
 }
 
