@@ -428,7 +428,7 @@ async function loginWithPrivkey() {
 function updateLoginButton() {
   const user = nostr.getCurrentUser()
   if (user) {
-    loginText.textContent = nostr.formatPubkey(user.pubkey)
+    loginText.textContent = nostr.formatDid(user.pubkey)
     loginBtn.classList.add('logged-in')
   } else {
     loginText.textContent = 'Login with Nostr'
@@ -453,7 +453,7 @@ async function refreshLeaderboard() {
     leaderboardList.innerHTML = scores.map((entry, i) => `
       <li>
         <span class="rank">${i + 1}</span>
-        <span class="player">${nostr.formatPubkey(entry.pubkey)}</span>
+        <span class="player" title="${nostr.pubkeyToDid(entry.pubkey)}">${nostr.formatDid(entry.pubkey)}</span>
         <span class="score">${entry.score.toLocaleString()}</span>
       </li>
     `).join('')

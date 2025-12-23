@@ -401,6 +401,20 @@ export function formatPubkey(pubkey) {
 }
 
 /**
+ * Convert pubkey to did:nostr format
+ */
+export function pubkeyToDid(pubkey) {
+  return `did:nostr:${pubkey.toLowerCase()}`
+}
+
+/**
+ * Format DID for display (truncated)
+ */
+export function formatDid(pubkey) {
+  return `did:nostr:${pubkey.slice(0, 8)}...${pubkey.slice(-4)}`
+}
+
+/**
  * Convert pubkey to npub (bech32)
  */
 export function pubkeyToNpub(pubkey) {
