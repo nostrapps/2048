@@ -459,7 +459,7 @@ async function refreshLeaderboard() {
     leaderboardList.innerHTML = scores.map((entry, i) => {
       const meta = metadata.get(entry.pubkey)
       const displayName = meta?.name || nostr.formatPubkey(entry.pubkey)
-      const profileUrl = `https://nostr.rocks/${entry.pubkey}`
+      const profileUrl = `https://nostr.rocks/users/${entry.pubkey}`
 
       return `
         <li>
