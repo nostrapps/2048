@@ -3,6 +3,9 @@
  * Handles authentication, event signing, and relay communication
  */
 
+// Import noble-secp256k1 for cryptographic operations
+import * as secp from 'https://esm.sh/@noble/secp256k1@2.1.0'
+
 // Relays for publishing and fetching scores
 const RELAYS = [
   'wss://relay.damus.io',
@@ -16,57 +19,6 @@ const GAME_ID = '2048-nostrapps'
 // Current user state
 let currentUser = null
 let privateKeyHex = null
-
-// secp256k1 curve parameters
-const CURVE = {
-  P: 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2fn,
-  N: 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n,
-  Gx: 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798n,
-  Gy: 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8n
-}
-
-// Modular arithmetic helpers
-function mod(a, b = CURVE.P) {
-  const result = a % b
-  return result >= 0n ? result : b + result
-}
-
-function modInverse(a, m = CURVE.P) {
-  let [old_r, r] = [a, m]
-  let [old_s, s] = [1n, 0n]
-  while (r !== 0n) {
-    const q = old_r / r
-    ;[old_r, r] = [r, old_r - q * r]
-    ;[old_s, s] = [s, old_s - q * s]
-  }
-  return mod(old_s, m)
-}
-
-// Point operations on secp256k1
-function pointAdd(p1, p2) {
-  if (!p1) return p2
-  if (!p2) return p1
-  const [x1, y1] = p1
-  const [x2, y2] = p2
-  if (x1 === x2 && y1 !== y2) return null
-  const m = x1 === x2
-    ? mod((3n * x1 * x1) * modInverse(2n * y1))
-    : mod((y2 - y1) * modInverse(x2 - x1))
-  const x3 = mod(m * m - x1 - x2)
-  const y3 = mod(m * (x1 - x3) - y1)
-  return [x3, y3]
-}
-
-function pointMultiply(k, point = [CURVE.Gx, CURVE.Gy]) {
-  let result = null
-  let addend = point
-  while (k > 0n) {
-    if (k & 1n) result = pointAdd(result, addend)
-    addend = pointAdd(addend, addend)
-    k >>= 1n
-  }
-  return result
-}
 
 // Hex encoding/decoding
 function hexToBytes(hex) {
@@ -97,66 +49,15 @@ async function sha256(data) {
   return new Uint8Array(hash)
 }
 
-// BIP-340 tagged hash
-async function taggedHash(tag, ...data) {
-  const tagBytes = new TextEncoder().encode(tag)
-  const tagHash = await sha256(tagBytes)
-  const combined = new Uint8Array([...tagHash, ...tagHash, ...data.flat()])
-  return sha256(combined)
-}
-
-// Get public key from private key (BIP-340 x-only)
+// Get public key from private key using noble-secp256k1
 function getPublicKey(privKeyHex) {
-  const privKey = BigInt('0x' + privKeyHex)
-  const point = pointMultiply(privKey)
-  // BIP-340 uses x-only pubkeys (32 bytes)
-  return bytesToHex(bigintToBytes(point[0], 32))
+  return bytesToHex(secp.schnorr.getPublicKey(privKeyHex))
 }
 
-// Create schnorr signature (BIP-340)
+// Create schnorr signature using noble-secp256k1
 async function schnorrSign(messageHash, privKeyHex) {
-  // Step 1: Get private key as bigint
-  const d0 = BigInt('0x' + privKeyHex)
-
-  // Step 2: Compute public key point P = d0 * G
-  const P = pointMultiply(d0)
-  const px = bigintToBytes(P[0], 32)
-
-  // Step 3: Negate d if P.y is odd (BIP-340 requires even y)
-  const d = P[1] % 2n === 0n ? d0 : CURVE.N - d0
-
-  // Step 4: Generate random auxiliary data
-  const a = crypto.getRandomValues(new Uint8Array(32))
-
-  // Step 5: Compute t = d XOR tagged_hash("BIP0340/aux", a)
-  const auxHash = await taggedHash('BIP0340/aux', a)
-  const dBytes = bigintToBytes(d, 32)
-  const t = new Uint8Array(32)
-  for (let i = 0; i < 32; i++) {
-    t[i] = dBytes[i] ^ auxHash[i]
-  }
-
-  // Step 6: Compute k0 = tagged_hash("BIP0340/nonce", t || px || m) mod n
-  const nonceHash = await taggedHash('BIP0340/nonce', t, px, messageHash)
-  let k0 = mod(bytesToBigint(nonceHash), CURVE.N)
-  if (k0 === 0n) throw new Error('Invalid k')
-
-  // Step 7: Compute R = k0 * G
-  const R = pointMultiply(k0)
-  const rx = bigintToBytes(R[0], 32)
-
-  // Step 8: Negate k if R.y is odd
-  const k = R[1] % 2n === 0n ? k0 : CURVE.N - k0
-
-  // Step 9: Compute e = tagged_hash("BIP0340/challenge", rx || px || m) mod n
-  const challengeHash = await taggedHash('BIP0340/challenge', rx, px, messageHash)
-  const e = mod(bytesToBigint(challengeHash), CURVE.N)
-
-  // Step 10: Compute s = (k + e * d) mod n
-  const s = mod(k + e * d, CURVE.N)
-
-  // Return signature as rx || s (64 bytes)
-  return bytesToHex(new Uint8Array([...rx, ...bigintToBytes(s, 32)]))
+  const sig = await secp.schnorr.sign(messageHash, privKeyHex)
+  return bytesToHex(sig)
 }
 
 // Create event ID (SHA-256 of serialized event)
@@ -175,18 +76,9 @@ async function getEventId(event) {
 
 // Sign event with private key
 async function signEventWithPrivkey(event, privKeyHex) {
-  const pubkey = getPublicKey(privKeyHex)
-  console.log('Derived pubkey:', pubkey)
-  console.log('Pubkey length:', pubkey.length)
-
-  event.pubkey = pubkey
+  event.pubkey = getPublicKey(privKeyHex)
   event.id = await getEventId(event)
-  console.log('Event ID:', event.id)
-
   event.sig = await schnorrSign(hexToBytes(event.id), privKeyHex)
-  console.log('Signature:', event.sig)
-  console.log('Sig length:', event.sig.length)
-
   return event
 }
 
