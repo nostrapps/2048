@@ -81,14 +81,20 @@ function init() {
   // Keyboard controls
   document.addEventListener('keydown', handleKeyDown)
 
-  // Touch controls
+  // Touch controls on game container
   let touchStartX, touchStartY
-  document.addEventListener('touchstart', e => {
+  const gameContainer = document.querySelector('.game-container')
+
+  gameContainer.addEventListener('touchstart', e => {
     touchStartX = e.touches[0].clientX
     touchStartY = e.touches[0].clientY
   }, { passive: true })
 
-  document.addEventListener('touchend', e => {
+  gameContainer.addEventListener('touchmove', e => {
+    e.preventDefault()
+  }, { passive: false })
+
+  gameContainer.addEventListener('touchend', e => {
     if (!touchStartX || !touchStartY) return
 
     const deltaX = e.changedTouches[0].clientX - touchStartX

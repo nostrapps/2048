@@ -12,6 +12,7 @@ body {
   justify-content: center;
   align-items: center;
   padding: 20px;
+  overscroll-behavior: none;
 }
 
 .container {
@@ -104,6 +105,7 @@ h1 {
   border-radius: 6px;
   padding: 10px;
   margin-bottom: 20px;
+  touch-action: none;
 }
 
 .grid-background {
