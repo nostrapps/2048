@@ -182,10 +182,45 @@ export function hasExtension() {
 }
 
 /**
- * Publish score to relays
+ * Fetch current user's score from relays
+ */
+export async function fetchUserScore(pubkey) {
+  const filter = {
+    kinds: [33334],
+    authors: [pubkey],
+    '#d': [GAME_ID]
+  }
+
+  const results = await Promise.allSettled(
+    RELAYS.map(url => queryRelay(url, filter))
+  )
+
+  let highestScore = 0
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue
+    for (const event of result.value) {
+      const score = parseInt(event.content)
+      if (!isNaN(score) && score > highestScore) {
+        highestScore = score
+      }
+    }
+  }
+
+  return highestScore
+}
+
+/**
+ * Publish score to relays (only if higher than existing)
  */
 export async function publishScore(score) {
   if (!currentUser) throw new Error('Not logged in')
+
+  // Check if new score is higher than existing
+  const existingScore = await fetchUserScore(currentUser.pubkey)
+  if (score <= existingScore) {
+    console.log(`Score ${score} not higher than existing ${existingScore}, skipping publish`)
+    return null
+  }
 
   const event = {
     kind: 33334,

@@ -382,10 +382,14 @@ async function endGame() {
   const user = nostr.getCurrentUser()
   if (user && score > 0) {
     try {
-      await nostr.publishScore(score)
-      console.log('Score published to Nostr!')
-      messageText.textContent = (won ? 'You Win!' : 'Game Over!') + ' Score saved!'
-      setTimeout(refreshLeaderboard, 1500)
+      const result = await nostr.publishScore(score)
+      if (result) {
+        console.log('Score published to Nostr!')
+        messageText.textContent = (won ? 'You Win!' : 'Game Over!') + ' New high score saved!'
+        setTimeout(refreshLeaderboard, 1500)
+      } else {
+        console.log('Score not higher than existing, not published')
+      }
     } catch (err) {
       console.error('Failed to publish score:', err)
       messageText.textContent = (won ? 'You Win!' : 'Game Over!') + ' (Save failed)'
