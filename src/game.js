@@ -81,6 +81,22 @@ function init() {
   // Keyboard controls
   document.addEventListener('keydown', handleKeyDown)
 
+  // Prevent pull-to-refresh globally
+  let lastTouchY = 0
+  document.addEventListener('touchstart', e => {
+    lastTouchY = e.touches[0].clientY
+  }, { passive: true })
+
+  document.addEventListener('touchmove', e => {
+    const touchY = e.touches[0].clientY
+    const touchYDelta = touchY - lastTouchY
+
+    // If at top of page and pulling down, prevent refresh
+    if (window.scrollY === 0 && touchYDelta > 0) {
+      e.preventDefault()
+    }
+  }, { passive: false })
+
   // Touch controls on game container
   let touchStartX, touchStartY
   const gameContainer = document.querySelector('.game-container')
@@ -89,10 +105,6 @@ function init() {
     touchStartX = e.touches[0].clientX
     touchStartY = e.touches[0].clientY
   }, { passive: true })
-
-  gameContainer.addEventListener('touchmove', e => {
-    e.preventDefault()
-  }, { passive: false })
 
   gameContainer.addEventListener('touchend', e => {
     if (!touchStartX || !touchStartY) return
