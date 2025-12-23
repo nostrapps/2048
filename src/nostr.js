@@ -3,8 +3,8 @@
  * Handles authentication, event signing, and relay communication
  */
 
-// Import noble-secp256k1 for cryptographic operations
-import * as secp from 'https://esm.sh/@noble/secp256k1@2.1.0'
+// Import noble-curves for schnorr signatures
+import { schnorr } from 'https://esm.sh/@noble/curves@1.7.0/secp256k1'
 
 // Relays for publishing and fetching scores
 const RELAYS = [
@@ -49,14 +49,14 @@ async function sha256(data) {
   return new Uint8Array(hash)
 }
 
-// Get public key from private key using noble-secp256k1
+// Get public key from private key using noble-curves
 function getPublicKey(privKeyHex) {
-  return bytesToHex(secp.schnorr.getPublicKey(privKeyHex))
+  return bytesToHex(schnorr.getPublicKey(privKeyHex))
 }
 
-// Create schnorr signature using noble-secp256k1
+// Create schnorr signature using noble-curves
 async function schnorrSign(messageHash, privKeyHex) {
-  const sig = await secp.schnorr.sign(messageHash, privKeyHex)
+  const sig = schnorr.sign(messageHash, privKeyHex)
   return bytesToHex(sig)
 }
 
