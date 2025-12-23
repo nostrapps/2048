@@ -304,6 +304,14 @@ footer a:hover {
 .leaderboard .player {
   flex: 1;
   font-family: monospace;
+  color: #f9f6f2;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.leaderboard a.player:hover {
+  color: #8b5cf6;
+  text-decoration: underline;
 }
 
 .leaderboard .score {

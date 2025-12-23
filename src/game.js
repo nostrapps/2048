@@ -452,13 +452,23 @@ async function refreshLeaderboard() {
       return
     }
 
-    leaderboardList.innerHTML = scores.map((entry, i) => `
-      <li>
-        <span class="rank">${i + 1}</span>
-        <span class="player" title="${nostr.pubkeyToDid(entry.pubkey)}">${nostr.formatDid(entry.pubkey)}</span>
-        <span class="score">${entry.score.toLocaleString()}</span>
-      </li>
-    `).join('')
+    // Fetch metadata for all players
+    const pubkeys = scores.map(s => s.pubkey)
+    const metadata = await nostr.fetchMetadata(pubkeys)
+
+    leaderboardList.innerHTML = scores.map((entry, i) => {
+      const meta = metadata.get(entry.pubkey)
+      const displayName = meta?.name || nostr.formatPubkey(entry.pubkey)
+      const profileUrl = `https://nostr.rocks/${entry.pubkey}`
+
+      return `
+        <li>
+          <span class="rank">${i + 1}</span>
+          <a href="${profileUrl}" target="_blank" class="player" title="${nostr.pubkeyToDid(entry.pubkey)}">${displayName}</a>
+          <span class="score">${entry.score.toLocaleString()}</span>
+        </li>
+      `
+    }).join('')
   } catch (err) {
     console.error('Failed to fetch leaderboard:', err)
     leaderboardList.innerHTML = '<li class="error">Failed to load</li>'

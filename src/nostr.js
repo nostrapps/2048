@@ -334,6 +334,46 @@ function queryRelay(url, filter) {
 }
 
 /**
+ * Fetch user metadata (kind 0) for multiple pubkeys
+ */
+export async function fetchMetadata(pubkeys) {
+  if (pubkeys.length === 0) return new Map()
+
+  const filter = {
+    kinds: [0],
+    authors: pubkeys
+  }
+
+  const results = await Promise.allSettled(
+    RELAYS.map(url => queryRelay(url, filter))
+  )
+
+  const metadataMap = new Map()
+
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue
+    for (const event of result.value) {
+      try {
+        const existing = metadataMap.get(event.pubkey)
+        // Keep the most recent metadata
+        if (!existing || event.created_at > existing.created_at) {
+          const content = JSON.parse(event.content)
+          metadataMap.set(event.pubkey, {
+            name: content.display_name || content.name || null,
+            picture: content.picture || null,
+            created_at: event.created_at
+          })
+        }
+      } catch (e) {
+        // Invalid JSON, skip
+      }
+    }
+  }
+
+  return metadataMap
+}
+
+/**
  * Format pubkey for display (truncated)
  */
 export function formatPubkey(pubkey) {
