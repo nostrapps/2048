@@ -62,9 +62,52 @@
       When two tiles with the same number touch, they merge into one!
     </p>
 
+    <div id="leaderboard" class="leaderboard">
+      <div class="leaderboard-header">
+        <h2>Leaderboard</h2>
+        <button id="refresh-btn" class="btn-small">Refresh</button>
+      </div>
+      <ul id="leaderboard-list">
+        <li class="loading">Loading...</li>
+      </ul>
+    </div>
+
     <footer>
       Powered by <a href="https://nostr.com/" target="_blank">Nostr</a>
     </footer>
+  </div>
+
+  <!-- Login Modal -->
+  <div id="login-modal" class="modal">
+    <div class="modal-content">
+      <button id="modal-close" class="modal-close">&times;</button>
+      <h2>Login with Nostr</h2>
+
+      <button id="ext-login-btn" class="btn btn-nostr btn-full">
+        Use Browser Extension
+      </button>
+
+      <div class="divider">
+        <span>or</span>
+      </div>
+
+      <div class="privkey-login">
+        <input
+          type="password"
+          id="privkey-input"
+          placeholder="Enter private key (hex or nsec)"
+          autocomplete="off"
+        >
+        <button id="privkey-login-btn" class="btn btn-full">
+          Login with Private Key
+        </button>
+      </div>
+
+      <p class="warning">
+        Warning: Entering your private key in a browser is risky.
+        Use a browser extension for better security.
+      </p>
+    </div>
   </div>
 
   <script type="module" src="src/game.js"></script>

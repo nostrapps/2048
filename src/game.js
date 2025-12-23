@@ -1,7 +1,9 @@
 /**
  * 2048 Game - Nostr Edition
- * Game works standalone, Nostr integration for high scores coming soon
+ * High scores saved to Nostr relays using NIP-133 (kind 33334)
  */
+
+import * as nostr from './nostr.js'
 
 // Game state
 const GRID_SIZE = 4
@@ -14,19 +16,18 @@ let isAnimating = false
 
 // Tile tracking
 let tileIdCounter = 0
-let tiles = new Map() // id -> { element, row, col, value }
+let tiles = new Map()
 
-// DOM elements (initialized in init)
+// DOM elements
 let tileContainer, scoreEl, bestEl, gameMessage, messageText
 let newGameBtn, retryBtn, loginBtn, loginText
-
-// Nostr auth (to be implemented)
-let nostrAuth = null
+let leaderboardEl, leaderboardList, refreshBtn
+let loginModal, modalClose, extLoginBtn, privkeyInput, privkeyLoginBtn
 
 // Tile size calculation
 let tileSize = 0
 const tileGap = 10
-const ANIMATION_DURATION = 150 // ms
+const ANIMATION_DURATION = 150
 
 function calculateTileSize() {
   if (!tileContainer) return
@@ -47,6 +48,18 @@ function init() {
   loginBtn = document.getElementById('login-btn')
   loginText = document.getElementById('login-text')
 
+  // Leaderboard elements
+  leaderboardEl = document.getElementById('leaderboard')
+  leaderboardList = document.getElementById('leaderboard-list')
+  refreshBtn = document.getElementById('refresh-btn')
+
+  // Login modal elements
+  loginModal = document.getElementById('login-modal')
+  modalClose = document.getElementById('modal-close')
+  extLoginBtn = document.getElementById('ext-login-btn')
+  privkeyInput = document.getElementById('privkey-input')
+  privkeyLoginBtn = document.getElementById('privkey-login-btn')
+
   calculateTileSize()
 
   window.addEventListener('resize', refreshAllTilePositions)
@@ -54,7 +67,16 @@ function init() {
   // Event listeners
   newGameBtn.addEventListener('click', newGame)
   retryBtn.addEventListener('click', newGame)
-  loginBtn.addEventListener('click', handleLogin)
+  loginBtn.addEventListener('click', handleLoginClick)
+  refreshBtn?.addEventListener('click', refreshLeaderboard)
+
+  // Modal events
+  modalClose?.addEventListener('click', closeModal)
+  extLoginBtn?.addEventListener('click', loginWithExtension)
+  privkeyLoginBtn?.addEventListener('click', loginWithPrivkey)
+  loginModal?.addEventListener('click', (e) => {
+    if (e.target === loginModal) closeModal()
+  })
 
   // Keyboard controls
   document.addEventListener('keydown', handleKeyDown)
@@ -91,10 +113,17 @@ function init() {
   requestAnimationFrame(() => {
     requestAnimationFrame(newGame)
   })
+
+  // Load leaderboard
+  refreshLeaderboard()
+
+  // Update extension button visibility
+  if (extLoginBtn) {
+    extLoginBtn.style.display = nostr.hasExtension() ? 'block' : 'none'
+  }
 }
 
 function newGame() {
-  // Clear existing tiles
   tiles.forEach(tile => tile.element.remove())
   tiles.clear()
   tileIdCounter = 0
@@ -126,12 +155,10 @@ function addRandomTile() {
   const value = Math.random() < 0.9 ? 2 : 4
   const id = ++tileIdCounter
 
-  // Create tile object
   const tile = { id, value, row: r, col: c, element: null }
   grid[r][c] = tile
   tiles.set(id, tile)
 
-  // Create DOM element
   createTileElement(tile, true)
   return true
 }
@@ -199,10 +226,9 @@ function move(direction) {
   if (gameOver || isAnimating) return
 
   let moved = false
-  const merges = [] // { survivor, consumed, newValue }
+  const merges = []
   const tilesToRemove = []
 
-  // Get traversal order based on direction
   const vectors = {
     up: { dr: -1, dc: 0 },
     down: { dr: 1, dc: 0 },
@@ -211,13 +237,11 @@ function move(direction) {
   }
   const { dr, dc } = vectors[direction]
 
-  // Process tiles in correct order
   const rows = [...Array(GRID_SIZE).keys()]
   const cols = [...Array(GRID_SIZE).keys()]
-  if (dr === 1) rows.reverse() // down: start from bottom
-  if (dc === 1) cols.reverse() // right: start from right
+  if (dr === 1) rows.reverse()
+  if (dc === 1) cols.reverse()
 
-  // Track which cells have already received a merge this move
   const mergedThisMove = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false))
 
   for (const r of rows) {
@@ -225,7 +249,6 @@ function move(direction) {
       const tile = grid[r][c]
       if (!tile) continue
 
-      // Find farthest position
       let newR = r
       let newC = c
 
@@ -238,16 +261,13 @@ function move(direction) {
         const nextTile = grid[nextR][nextC]
 
         if (nextTile === null) {
-          // Empty cell, can move there
           newR = nextR
           newC = nextC
         } else if (nextTile.value === tile.value && !mergedThisMove[nextR][nextC]) {
-          // Can merge
           newR = nextR
           newC = nextC
           break
         } else {
-          // Blocked by different tile or already merged
           break
         }
       }
@@ -256,18 +276,15 @@ function move(direction) {
         moved = true
         const targetTile = grid[newR][newC]
 
-        // Clear old position
         grid[r][c] = null
 
         if (targetTile) {
-          // Merge
           const newValue = tile.value * 2
           merges.push({ survivor: targetTile, consumed: tile, newValue })
           mergedThisMove[newR][newC] = true
           score += newValue
           if (newValue === 2048 && !won) won = true
         } else {
-          // Just move
           grid[newR][newC] = tile
           tile.row = newR
           tile.col = newC
@@ -277,21 +294,17 @@ function move(direction) {
     }
   }
 
-  // Process merges after all movements calculated
   for (const { survivor, consumed, newValue } of merges) {
-    // Move consumed tile to merge position, then remove after animation
     consumed.row = survivor.row
     consumed.col = survivor.col
     updateTilePosition(consumed)
     tilesToRemove.push(consumed)
 
-    // Update survivor after animation
     setTimeout(() => {
       updateTileValue(survivor, newValue)
     }, ANIMATION_DURATION)
   }
 
-  // Remove consumed tiles after animation
   setTimeout(() => {
     for (const tile of tilesToRemove) {
       tile.element.remove()
@@ -301,7 +314,6 @@ function move(direction) {
 
   if (moved) {
     isAnimating = true
-    // Add new tile after animation completes
     setTimeout(() => {
       addRandomTile()
       updateScore()
@@ -343,19 +355,112 @@ function updateScore() {
   }
 }
 
-function endGame() {
+async function endGame() {
   gameOver = true
   messageText.textContent = won ? 'You Win!' : 'Game Over!'
   gameMessage.classList.add('active')
 
-  // TODO: Save high score to Nostr
-  // Will use a custom event kind for game high scores
+  // Offer to save score if logged in
+  const user = nostr.getCurrentUser()
+  if (user && score > 0) {
+    try {
+      await nostr.publishScore(score)
+      console.log('Score published to Nostr!')
+      setTimeout(refreshLeaderboard, 1000)
+    } catch (err) {
+      console.error('Failed to publish score:', err)
+    }
+  }
 }
 
-async function handleLogin() {
-  // TODO: Implement Nostr login using NIP-07 (window.nostr)
-  // For now, show a message that it's coming soon
-  alert('Nostr login coming soon! High scores will be saved to Nostr relays.')
+// Login handling
+function handleLoginClick() {
+  const user = nostr.getCurrentUser()
+  if (user) {
+    // Already logged in, logout
+    nostr.logout()
+    updateLoginButton()
+  } else {
+    // Show login modal
+    openModal()
+  }
+}
+
+function openModal() {
+  if (loginModal) {
+    loginModal.classList.add('active')
+    if (privkeyInput) privkeyInput.value = ''
+  }
+}
+
+function closeModal() {
+  if (loginModal) {
+    loginModal.classList.remove('active')
+  }
+}
+
+async function loginWithExtension() {
+  try {
+    await nostr.loginWithExtension()
+    closeModal()
+    updateLoginButton()
+  } catch (err) {
+    alert(err.message)
+  }
+}
+
+async function loginWithPrivkey() {
+  const key = privkeyInput?.value?.trim()
+  if (!key) {
+    alert('Please enter a private key')
+    return
+  }
+
+  try {
+    await nostr.loginWithPrivkey(key)
+    closeModal()
+    updateLoginButton()
+  } catch (err) {
+    alert(err.message)
+  }
+}
+
+function updateLoginButton() {
+  const user = nostr.getCurrentUser()
+  if (user) {
+    loginText.textContent = nostr.formatPubkey(user.pubkey)
+    loginBtn.classList.add('logged-in')
+  } else {
+    loginText.textContent = 'Login with Nostr'
+    loginBtn.classList.remove('logged-in')
+  }
+}
+
+// Leaderboard
+async function refreshLeaderboard() {
+  if (!leaderboardList) return
+
+  leaderboardList.innerHTML = '<li class="loading">Loading...</li>'
+
+  try {
+    const scores = await nostr.fetchLeaderboard(10)
+
+    if (scores.length === 0) {
+      leaderboardList.innerHTML = '<li class="empty">No scores yet. Be the first!</li>'
+      return
+    }
+
+    leaderboardList.innerHTML = scores.map((entry, i) => `
+      <li>
+        <span class="rank">${i + 1}</span>
+        <span class="player">${nostr.formatPubkey(entry.pubkey)}</span>
+        <span class="score">${entry.score.toLocaleString()}</span>
+      </li>
+    `).join('')
+  } catch (err) {
+    console.error('Failed to fetch leaderboard:', err)
+    leaderboardList.innerHTML = '<li class="error">Failed to load</li>'
+  }
 }
 
 // Start when DOM is ready
