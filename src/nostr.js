@@ -267,10 +267,16 @@ export async function publishScore(score) {
 
   // Sign event
   let signedEvent
-  if (currentUser.method === 'extension') {
-    signedEvent = await signEventWithExtension(event)
-  } else {
-    signedEvent = await signEventWithPrivkey(event, privateKeyHex)
+  try {
+    if (currentUser.method === 'extension') {
+      signedEvent = await signEventWithExtension(event)
+    } else {
+      signedEvent = await signEventWithPrivkey(event, privateKeyHex)
+    }
+    console.log('Event signed:', signedEvent)
+  } catch (err) {
+    console.error('Signing failed:', err)
+    throw new Error('Failed to sign event: ' + err.message)
   }
 
   // Publish to relays
@@ -278,8 +284,13 @@ export async function publishScore(score) {
     RELAYS.map(url => publishToRelay(url, signedEvent))
   )
 
+  console.log('Relay results:', results)
+
   const success = results.some(r => r.status === 'fulfilled')
-  if (!success) throw new Error('Failed to publish to any relay')
+  if (!success) {
+    const errors = results.map(r => r.reason?.message || 'Unknown').join(', ')
+    throw new Error('Failed to publish: ' + errors)
+  }
 
   return signedEvent
 }

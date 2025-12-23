@@ -366,9 +366,11 @@ async function endGame() {
     try {
       await nostr.publishScore(score)
       console.log('Score published to Nostr!')
-      setTimeout(refreshLeaderboard, 1000)
+      messageText.textContent = (won ? 'You Win!' : 'Game Over!') + ' Score saved!'
+      setTimeout(refreshLeaderboard, 1500)
     } catch (err) {
       console.error('Failed to publish score:', err)
+      messageText.textContent = (won ? 'You Win!' : 'Game Over!') + ' (Save failed)'
     }
   }
 }
